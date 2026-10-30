@@ -46,6 +46,18 @@ test('the clue catalog has 20 distinct clues', () => {
   assert.equal(new Set(texts).size, 20);
 });
 
+test('structures get a colour, with no repeats within a type', () => {
+  for (let seed = 1; seed <= 20; seed++) {
+    const { map } = generatePuzzle(seed * 31, 3);
+    for (const type of ['stone', 'shack']) {
+      const colors = map.hexes.filter((h) => h.structure === type).map((h) => h.structureColor);
+      assert.equal(colors.length, 3);
+      assert.equal(new Set(colors).size, 3);
+      assert.ok(colors.every(Boolean));
+    }
+  }
+});
+
 test('setup rejects cubes that contradict your clue or come out of turn', () => {
   const game = createGame(NAMES, 11);
   const allowed = game.map.hexes.find((h) => clueMatches(game.map, game.clues[0], h));

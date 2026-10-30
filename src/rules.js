@@ -5,6 +5,7 @@ export const TERRAINS = ['forest', 'desert', 'swamp', 'mountain', 'water'];
 export const MIN_PLAYERS = 3;
 export const MAX_PLAYERS = 5;
 export const SETUP_ROUND_CHOICES = [0, 1, 2, 3, 4];
+export const STRUCTURE_COLORS = ['red', 'violet', 'white', 'black'];
 export const DEFAULT_OPTIONS = { advanced: false, setupRounds: 2, highlight: true };
 
 const STRUCTURE_LABEL = { stone: 'a standing stone', shack: 'an abandoned shack' };
@@ -78,6 +79,8 @@ export function generateMap(rng) {
     // Each of the six 6x3 sections gets one structure and one animal territory.
     const structures = shuffle(['stone', 'stone', 'stone', 'shack', 'shack', 'shack'], rng);
     const animals = shuffle(['bear', 'bear', 'bear', 'cougar', 'cougar', 'cougar'], rng);
+    // Colours are decorative: clues only care about the structure's type.
+    const paints = { stone: shuffle(STRUCTURE_COLORS, rng), shack: shuffle(STRUCTURE_COLORS, rng) };
     let section = 0;
     for (let tr = 0; tr < 3; tr++) {
       for (let tc = 0; tc < 2; tc++) {
@@ -87,6 +90,7 @@ export function generateMap(rng) {
         );
         const home = inside.find((h) => h.terrain !== 'water') ?? inside[0];
         home.structure = structures[section];
+        home.structureColor = paints[home.structure].pop();
         const open = inside.filter((h) => h !== home);
         const territory = [open[0]];
         for (const h of open.slice(1)) {

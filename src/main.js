@@ -8,6 +8,11 @@ const CORNERS = [0, 1, 2, 3, 4, 5].map((i) => {
   const a = (Math.PI / 3) * i;
   return [Math.cos(a), Math.sin(a)];
 });
+const STRUCTURE_PATHS = {
+  stone: 'M-4.5 9 L-5.5 -4 Q-5 -9 -0.5 -10 Q4.5 -9.5 5 -4 L6 9 Z',
+  shack: 'M-8 -1 L0 -9 L8 -1 L6 -1 L6 8 L1.8 8 L1.8 2.5 L-1.8 2.5 L-1.8 8 L-6 8 L-6 -1 Z',
+};
+const STRUCTURE_NAME = { stone: 'standing stone', shack: 'abandoned shack' };
 const STATUS = {
   connecting: 'Connecting…',
   online: 'Connected',
@@ -23,8 +28,32 @@ let selected = null;
 let showClue = false;
 let message = '';
 let homeError = '';
+let clueHidden = loadClueHidden();
 let seenLastHex = null;
 let flashUntil = 0;
+
+function loadClueHidden() {
+  try {
+    return localStorage.getItem('cryptid-hide-clue') === '1';
+  } catch {
+    return false;
+  }
+}
+
+function saveClueHidden(hidden) {
+  try {
+    localStorage.setItem('cryptid-hide-clue', hidden ? '1' : '0');
+  } catch {
+    // Storage may be blocked; the clue just shows again after a reload.
+  }
+}
+
+// Hints reveal the clue to anyone watching the screen, so hiding it turns them off too.
+const hintsOn = (game) => game.highlight && !clueHidden;
+
+function structureMark(type, color, x, y) {
+  return `<g class="structure ${color}" transform="translate(${x} ${y})"><path d="${STRUCTURE_PATHS[type]}"/></g>`;
+}
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const storedName = () => {
@@ -187,14 +216,13 @@ function renderBoard(game) {
   const cells = ordered.map((hex) => {
     const [x, y] = hexCenter(hex);
     const excluded = !clueMatches(game.map, game.myClue, hex);
-    const dim = game.highlight && ((placing && !legalCube(game, hex)) || (showClue && !placing && excluded));
+    const dim = hintsOn(game) && ((placing && !legalCube(game, hex)) || (showClue && !placing && excluded));
     const classes = ['hex', dim ? 'dim' : '', selected === hex.id ? 'selected' : '',
       game.lastHex === hex.id ? 'last' : '', game.reveal?.habitat === hex.id ? 'habitat' : ''].join(' ');
     const animal = hex.animal
-      ? `<polygon class="territory ${hex.animal}" points="${hexPoints(x, y, 0.86)}"/>
-         <text class="glyph" x="${x + 13}" y="${y - 12}">${hex.animal === 'bear' ? '🐻' : '🐆'}</text>` : '';
+      ? `<polygon class="territory ${hex.animal}" points="${hexPoints(x, y, 0.86)}"/>` : '';
     const structure = hex.structure
-      ? `<text class="glyph big" x="${x - 11}" y="${y - 6}">${hex.structure === 'stone' ? '🗿' : '🏚️'}</text>` : '';
+      ? structureMark(hex.structure, hex.structureColor ?? 'white', x - 13, y - 8) : '';
     const cube = game.cubes[hex.id];
     const cubeEl = cube === undefined ? '' : `
       <rect class="p${cube} token" x="${x - 11}" y="${y - 11}" width="22" height="22" rx="3"/>
@@ -205,7 +233,7 @@ function renderBoard(game) {
         <text class="token-num small" x="${dx}" y="${y + 19.5}">${p + 1}</text>`;
     }).join('');
     return `<g class="${classes}" data-hex="${hex.id}" role="button" tabindex="0"
-      aria-label="${spaceName(hex)}, ${hex.terrain}${hex.structure ? `, ${hex.structure}` : ''}${hex.animal ? `, ${hex.animal} territory` : ''}">
+      aria-label="${esc(hexDescription(hex))}">
       <polygon class="cell" fill="url(#t-${hex.terrain})" points="${hexPoints(x, y)}"/>
       ${animal}${structure}
       ${game.lastHex === hex.id ? `<polygon class="last-ring ${flashing ? 'flash' : ''}" points="${hexPoints(x, y, 0.93)}"/>` : ''}
@@ -218,12 +246,16 @@ function renderBoard(game) {
     <defs>
       ${pattern('forest', '#2f6b45', '<path d="M8 3l4 8H4z" fill="#255a39"/>')}
       ${pattern('desert', '#d9b56c', '<path d="M1 10q4-3 7 0t7 0" stroke="#c49d52" fill="none"/>')}
-      ${pattern('swamp', '#6f7d3a', '<path d="M5 13V6M9 13V4M13 13V7" stroke="#59662c"/>')}
+      ${pattern('swamp', '#7b4b9e', '<path d="M5 13V6M9 13V4M13 13V7" stroke="#643a85"/>')}
       ${pattern('mountain', '#837d8a', '<path d="M2 13l5-8 5 8" stroke="#6b6572" fill="none"/>')}
       ${pattern('water', '#3f7fb5', '<path d="M1 6q3-3 6 0t6 0M1 12q3-3 6 0t6 0" stroke="#336c9c" fill="none"/>')}
     </defs>
     ${cells}
   </svg>`;
+}
+
+function legendIcon(content, extra = '') {
+  return `<svg class="legend-icon ${extra}" viewBox="0 0 24 24" aria-hidden="true">${content}</svg>`;
 }
 
 function pattern(id, base, marks) {
@@ -233,7 +265,7 @@ function pattern(id, base, marks) {
 
 function hexDescription(hex) {
   const parts = [hex.terrain];
-  if (hex.structure) parts.push(hex.structure === 'stone' ? 'standing stone' : 'abandoned shack');
+  if (hex.structure) parts.push(`${hex.structureColor ?? ''} ${STRUCTURE_NAME[hex.structure]}`.trim());
   if (hex.animal) parts.push(`${hex.animal} territory`);
   return `${spaceName(hex)}: ${parts.join(', ')}`;
 }
@@ -262,9 +294,9 @@ function renderActions(game) {
   const hex = selected === null ? null : game.map.hexes[selected];
   const heading = hex ? `<p class="picked">${esc(hexDescription(hex))}</p>` : '';
   if (needsCube(game)) {
-    if (!hex) return `<div class="card"><p>Tap a ${game.highlight ? 'bright ' : ''}space on the map.</p></div>`;
+    if (!hex) return `<div class="card"><p>Tap a ${hintsOn(game) ? 'bright ' : ''}space on the map.</p></div>`;
     // With highlighting off, nothing hints at the clue until a move is actually tried.
-    const legal = !game.highlight || legalCube(game, hex);
+    const legal = !hintsOn(game) || legalCube(game, hex);
     return `<div class="card">${heading}
       <button class="primary" data-act="cube" ${legal ? '' : 'disabled'}>Place cube here</button>
       ${legal ? '' : '<p class="fine">Your clue allows this space, or it already has a cube.</p>'}</div>`;
@@ -277,7 +309,7 @@ function renderActions(game) {
     return `<div class="card">${heading}<p class="fine">This space has a cube, so it can't be the habitat.</p></div>`;
   }
   const discs = game.discs[hex.id] ?? [];
-  const canSearch = !game.highlight || clueMatches(game.map, game.myClue, hex);
+  const canSearch = !hintsOn(game) || clueMatches(game.map, game.myClue, hex);
   return `<div class="card">${heading}
     <h3>Question</h3>
     <div class="ask">${game.names.map((name, i) => (i === game.me ? '' : `
@@ -301,17 +333,27 @@ function renderGame() {
       <strong>Cryptid Hunt</strong>
       <span class="code">${esc(view.code)}</span>
       ${status === 'online' ? '' : `<span class="warn" role="status">${esc(STATUS[status] ?? '')}</span>`}
+      <a class="book-link" href="book.html" target="_blank" rel="noopener">Clue Book</a>
     </header>
     <div class="banner ${mine ? 'mine' : ''} ${game.phase === 'over' ? 'won' : ''}" aria-live="polite">${turnLine(game)}</div>
     ${message ? `<p class="error" role="alert">${esc(message)}</p>` : ''}
     <p class="latest"><strong>Latest</strong> ${esc(game.log[game.log.length - 1])}</p>
     <div class="layout">
       <section class="map-wrap"><div class="map-scroll">${renderBoard(game)}</div>
-        <p class="legend">🗿 standing stone · 🏚️ shack · 🐻 bear · 🐆 cougar · ■ cube = no · ● disc = maybe</p>
+        <p class="legend">
+          <span>${legendIcon(structureMark('stone', 'red', 12, 12))} standing stone</span>
+          <span>${legendIcon(structureMark('shack', 'violet', 12, 12))} shack</span>
+          <span>${legendIcon('<polygon class="territory bear" points="6,2 18,2 23,12 18,22 6,22 1,12"/>', 'on-tan')} bear</span>
+          <span>${legendIcon('<polygon class="territory cougar" points="6,2 18,2 23,12 18,22 6,22 1,12"/>', 'on-tan')} cougar</span>
+          <span>■ cube = no</span><span>● disc = maybe</span>
+        </p>
       </section>
       <aside>
-        <div class="card clue"><h2>Your secret clue</h2><p>${esc(clueText(game.myClue))}</p>
-          ${game.highlight ? `<label class="check"><input type="checkbox" id="show-clue" ${showClue ? 'checked' : ''}> Dim spaces my clue rules out</label>` : ''}
+        <div class="card clue">
+          <div class="clue-head"><h2>Your secret clue</h2>
+            <button class="small" data-act="toggle-clue" aria-pressed="${clueHidden}">${clueHidden ? 'Show' : 'Hide'}</button></div>
+          ${clueHidden ? '<p class="clue-hidden">Hidden</p>' : `<p>${esc(clueText(game.myClue))}</p>`}
+          ${hintsOn(game) ? `<label class="check"><input type="checkbox" id="show-clue" ${showClue ? 'checked' : ''}> Dim spaces my clue rules out</label>` : ''}
         </div>
         <div class="actions">${renderActions(game)}</div>
         <div class="card"><h2>Hunters</h2><ul class="roster">${view.roster.map((p, i) => `
@@ -381,6 +423,11 @@ app.addEventListener('click', (event) => {
   const button = event.target.closest('[data-act]');
   if (!button) return;
   switch (button.dataset.act) {
+    case 'toggle-clue':
+      clueHidden = !clueHidden;
+      saveClueHidden(clueHidden);
+      render();
+      break;
     case 'copy': {
       const input = app.querySelector('#share');
       navigator.clipboard?.writeText(input.value).catch(() => input.select());
