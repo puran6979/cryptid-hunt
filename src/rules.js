@@ -24,7 +24,7 @@ export function makeRng(seed) {
   };
 }
 
-function shuffle(list, rng) {
+export function shuffle(list, rng) {
   const out = [...list];
   for (let i = out.length - 1; i > 0; i--) {
     const j = Math.floor(rng() * (i + 1));
@@ -79,7 +79,7 @@ export function generateMap(rng) {
     // Each of the six 6x3 sections gets one structure and one animal territory.
     const structures = shuffle(['stone', 'stone', 'stone', 'shack', 'shack', 'shack'], rng);
     const animals = shuffle(['bear', 'bear', 'bear', 'cougar', 'cougar', 'cougar'], rng);
-    // Colours are decorative: clues only care about the structure's type.
+    // Colour clues count both types, so a colour may appear on up to two structures.
     const paints = { stone: shuffle(STRUCTURE_COLORS, rng), shack: shuffle(STRUCTURE_COLORS, rng) };
     let section = 0;
     for (let tr = 0; tr < 3; tr++) {
@@ -126,6 +126,9 @@ export function clueMatches(map, clue, hex) {
     case 'nearAnimal':
       result = within(hex, map.hexes, (h) => h.animal === clue.animal, 2);
       break;
+    case 'nearColor':
+      result = within(hex, map.hexes, (h) => h.structure && h.structureColor === clue.color, 3);
+      break;
     default:
       throw new RuleError(`Unknown clue kind ${clue.kind}`);
   }
@@ -145,6 +148,8 @@ export function clueText(clue) {
       return `The habitat ${on} within 2 spaces of ${STRUCTURE_LABEL[clue.structure]}.`;
     case 'nearAnimal':
       return `The habitat ${on} within 2 spaces of ${ANIMAL_LABEL[clue.animal]}.`;
+    case 'nearColor':
+      return `The habitat ${on} within 3 spaces of a ${clue.color} structure.`;
     default:
       throw new RuleError(`Unknown clue kind ${clue.kind}`);
   }
@@ -158,6 +163,7 @@ export function clueCatalog() {
   });
   for (const structure of ['stone', 'shack']) clues.push({ kind: 'nearStructure', structure });
   for (const animal of ['bear', 'cougar']) clues.push({ kind: 'nearAnimal', animal });
+  for (const color of STRUCTURE_COLORS) clues.push({ kind: 'nearColor', color });
   return clues;
 }
 
@@ -223,9 +229,12 @@ export function createGame(names, seed, options = {}) {
     pendingCube: null,
     winner: null,
     lastHex: null,
-    log: [setupRounds === 0
-      ? 'No setup rounds. The hunt begins!'
-      : `Setup: each player places ${setupRounds} cube${setupRounds === 1 ? '' : 's'} on spaces their clue rules out.`],
+    log: [
+      `Turn order: ${names.join(', ')}.`,
+      setupRounds === 0
+        ? 'No setup rounds. The hunt begins!'
+        : `Setup: each player places ${setupRounds} cube${setupRounds === 1 ? '' : 's'} on spaces their clue rules out.`,
+    ],
   };
 }
 

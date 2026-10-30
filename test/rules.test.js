@@ -40,10 +40,34 @@ for (const advanced of [false, true]) {
   }
 }
 
-test('the clue catalog has 20 distinct clues', () => {
+test('the clue catalog has 24 distinct clues', () => {
   const texts = clueCatalog().map(clueText);
-  assert.equal(texts.length, 20);
-  assert.equal(new Set(texts).size, 20);
+  assert.equal(texts.length, 24);
+  assert.equal(new Set(texts).size, 24);
+});
+
+test('colour clues reach 3 spaces from either structure type', () => {
+  const place = (c, r, structure, structureColor) => ({ id: 0, c, r, terrain: 'forest', structure, structureColor, animal: null });
+  const map = { hexes: [place(0, 0, 'stone', 'violet'), place(5, 5, 'shack', 'violet'), place(0, 8, 'stone', 'red')] };
+  const clue = { kind: 'nearColor', color: 'violet' };
+  const at = (c, r) => ({ c, r });
+  assert.equal(clueMatches(map, clue, at(0, 3)), true);
+  assert.equal(clueMatches(map, clue, at(5, 8)), true);
+  assert.equal(clueMatches(map, clue, at(0, 4)), false);
+  assert.equal(clueMatches(map, { ...clue, negated: true }, at(0, 4)), true);
+  assert.equal(clueText(clue), 'The habitat is within 3 spaces of a violet structure.');
+});
+
+test('colour clues are dealt, and only for colours on the map', () => {
+  let dealt = 0;
+  for (let seed = 1; seed <= 100; seed++) {
+    const { map, clues } = generatePuzzle(seed * 101, 4);
+    for (const clue of clues.filter((c) => c.kind === 'nearColor')) {
+      dealt++;
+      assert.ok(map.hexes.some((h) => h.structureColor === clue.color));
+    }
+  }
+  assert.ok(dealt > 0);
 });
 
 test('structures get a colour, with no repeats within a type', () => {

@@ -6,6 +6,7 @@ const CHAPTERS = [
   ['Near terrain', ['nearTerrain']],
   ['Near animals', ['nearAnyAnimal', 'nearAnimal']],
   ['Near structures', ['nearStructure']],
+  ['Near structure colours', ['nearColor']],
 ];
 
 const catalog = clueCatalog();

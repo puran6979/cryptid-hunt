@@ -1,6 +1,6 @@
 // Host-authoritative rooms over WebRTC. The host's browser runs the rules and
 // sends each player a personal view, so clues never reach other players' devices.
-import { applyAction, createGame, DEFAULT_OPTIONS, MAX_PLAYERS, MIN_PLAYERS, RuleError, viewFor } from './rules.js';
+import { applyAction, createGame, DEFAULT_OPTIONS, makeRng, MAX_PLAYERS, MIN_PLAYERS, RuleError, shuffle, viewFor } from './rules.js';
 
 const PREFIX = 'cryptid-hunt-v1-';
 const CODE_LETTERS = 'ABCDEFGHJKMNPQRSTUVWXYZ';
@@ -147,10 +147,11 @@ export class HostSession {
   }
 
   start() {
-    const { players } = this.room;
-    if (players.length < MIN_PLAYERS) return;
-    const seed = crypto.getRandomValues(new Uint32Array(1))[0];
-    this.room.game = createGame(players.map((p) => p.name), seed, this.room.options);
+    if (this.room.players.length < MIN_PLAYERS) return;
+    const [orderSeed, seed] = crypto.getRandomValues(new Uint32Array(2));
+    // Seats are the turn order, so shuffling them means joining first gives no advantage.
+    this.room.players = shuffle(this.room.players, makeRng(orderSeed));
+    this.room.game = createGame(this.room.players.map((p) => p.name), seed, this.room.options);
     this.publish();
   }
 
@@ -168,7 +169,7 @@ export class HostSession {
     return {
       code: this.code,
       roster,
-      isHost: seat === 0,
+      isHost: players[seat].token === this.token,
       options: this.room.options,
       game: game ? viewFor(game, seat) : null,
     };
