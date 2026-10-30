@@ -52,6 +52,36 @@ test('setup rejects cubes that contradict your clue or come out of turn', () => 
   assert.equal(Object.keys(game.cubes).length, 8);
 });
 
+for (const setupRounds of [1, 2, 3, 4]) {
+  test(`setup places ${setupRounds} round(s) of cubes, then the first player starts`, () => {
+    const game = createGame(NAMES, 21, { setupRounds });
+    finishSetup(game);
+    assert.equal(game.phase, 'turn');
+    assert.equal(game.current, 0);
+    assert.equal(Object.keys(game.cubes).length, NAMES.length * setupRounds);
+  });
+}
+
+test('invalid setup rounds are rejected', () => {
+  assert.throws(() => createGame(NAMES, 22, { setupRounds: 9 }), RuleError);
+});
+
+test('setup skips a player with no legal space left', () => {
+  const game = createGame(NAMES, 23, { setupRounds: 2 });
+  for (const hex of game.map.hexes) {
+    if (!clueMatches(game.map, game.clues[1], hex)) game.cubes[hex.id] = 2;
+  }
+  const spot = game.map.hexes.find((h) => canPlaceCube(game, 0, h));
+  applyAction(game, 0, { type: 'placeCube', hex: spot.id });
+  assert.equal(game.current, 2);
+  assert.equal(game.setupLeft, NAMES.length * 2 - 2);
+});
+
+test('the highlight option reaches every player view', () => {
+  assert.equal(viewFor(createGame(NAMES, 24), 0).highlight, true);
+  assert.equal(viewFor(createGame(NAMES, 24, { highlight: false }), 0).highlight, false);
+});
+
 test('a "no" answer places the target cube and costs the asker a cube', () => {
   const game = createGame(NAMES, 12);
   finishSetup(game);

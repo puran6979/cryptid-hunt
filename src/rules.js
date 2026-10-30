@@ -4,6 +4,8 @@ export const ROWS = 9;
 export const TERRAINS = ['forest', 'desert', 'swamp', 'mountain', 'water'];
 export const MIN_PLAYERS = 3;
 export const MAX_PLAYERS = 5;
+export const SETUP_ROUND_CHOICES = [1, 2, 3, 4];
+export const DEFAULT_OPTIONS = { advanced: false, setupRounds: 2, highlight: true };
 
 const STRUCTURE_LABEL = { stone: 'a standing stone', shack: 'an abandoned shack' };
 const ANIMAL_LABEL = { bear: 'bear territory', cougar: 'cougar territory' };
@@ -194,7 +196,9 @@ export function generatePuzzle(seed, playerCount, advanced = false) {
   }
 }
 
-export function createGame(names, seed, advanced = false) {
+export function createGame(names, seed, options = {}) {
+  const { advanced, setupRounds, highlight } = { ...DEFAULT_OPTIONS, ...options };
+  if (!SETUP_ROUND_CHOICES.includes(setupRounds)) throw new RuleError('Invalid number of setup rounds.');
   if (names.length < MIN_PLAYERS || names.length > MAX_PLAYERS) {
     throw new RuleError(`Cryptid Hunt needs ${MIN_PLAYERS}-${MAX_PLAYERS} players.`);
   }
@@ -202,6 +206,8 @@ export function createGame(names, seed, advanced = false) {
   return {
     names,
     advanced,
+    highlight,
+    setupRounds,
     map,
     habitat,
     clues,
@@ -209,11 +215,11 @@ export function createGame(names, seed, advanced = false) {
     discs: {},
     current: 0,
     phase: 'setup',
-    setupLeft: names.length * 2,
+    setupLeft: names.length * setupRounds,
     pendingCube: null,
     winner: null,
     lastHex: null,
-    log: ['Setup: each player places two cubes on spaces their clue rules out.'],
+    log: [`Setup: each player places ${setupRounds} cube${setupRounds === 1 ? '' : 's'} on spaces their clue rules out.`],
   };
 }
 
@@ -257,6 +263,20 @@ function requirePenalty(game, player) {
   }
 }
 
+// Moves to the next setup placement, skipping anyone with no legal space left.
+function advanceSetup(game) {
+  do {
+    game.setupLeft--;
+    game.current = (game.current + 1) % game.names.length;
+    if (game.setupLeft === 0) {
+      game.phase = 'turn';
+      game.current = 0;
+      game.log.push('Setup complete. The hunt begins!');
+      return;
+    }
+  } while (!game.map.hexes.some((h) => canPlaceCube(game, game.current, h)));
+}
+
 function placeCube(game, player, hexId) {
   const hex = hexOf(game, hexId);
   const expected = game.phase === 'setup' ? game.current : game.pendingCube;
@@ -271,13 +291,7 @@ function placeCube(game, player, hexId) {
   game.lastHex = hex.id;
   game.log.push(`${nameOf(game, player)} placed a cube on ${spaceName(hex)}.`);
   if (game.phase === 'setup') {
-    game.setupLeft--;
-    game.current = (game.current + 1) % game.names.length;
-    if (game.setupLeft === 0) {
-      game.phase = 'turn';
-      game.current = 0;
-      game.log.push('Setup complete. The hunt begins!');
-    }
+    advanceSetup(game);
   } else {
     nextTurn(game);
   }
@@ -352,6 +366,8 @@ export function viewFor(game, player) {
   return {
     names: game.names,
     advanced: game.advanced,
+    highlight: game.highlight !== false,
+    setupRounds: game.setupRounds ?? 2,
     map: game.map,
     cubes: game.cubes,
     discs: game.discs,

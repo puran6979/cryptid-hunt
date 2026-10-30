@@ -1,4 +1,4 @@
-import { clueMatches, clueText, COLS, MIN_PLAYERS, ROWS, spaceName } from './rules.js';
+import { clueMatches, clueText, COLS, MIN_PLAYERS, ROWS, SETUP_ROUND_CHOICES, spaceName } from './rules.js';
 import { GuestSession, hasSavedRoom, HostSession, newRoomCode } from './net.js';
 
 const app = document.getElementById('app');
@@ -101,7 +101,7 @@ function renderHome() {
 
 function rulesHtml() {
   return `<ol>
-    <li><strong>Setup.</strong> Each player places two cubes on spaces their clue rules out.</li>
+    <li><strong>Setup.</strong> Each player places cubes on spaces their clue rules out. The host picks how many rounds.</li>
     <li><strong>Question.</strong> On your turn, pick a space and ask another player. They answer automatically
       and truthfully: a disc means their clue allows it, a cube means it doesn't.</li>
     <li><strong>Penalty.</strong> If you get a cube, you must place one of your own on a space your clue rules out, which gives information away.</li>
@@ -111,7 +111,7 @@ function rulesHtml() {
 }
 
 function renderLobby() {
-  const { code, roster, isHost } = view;
+  const { code, roster, isHost, options } = view;
   const url = `${location.origin}${location.pathname}#${code}`;
   const enough = roster.length >= MIN_PLAYERS;
   app.innerHTML = `
@@ -131,12 +131,21 @@ function renderLobby() {
           <li><span class="swatch p${i}">${i + 1}</span>${esc(p.name)}
           ${p.online ? '' : '<em>away</em>'}</li>`).join('')}</ul>
         ${isHost ? `
-          <label class="check"><input type="checkbox" id="advanced"> Advanced: one clue says where the habitat is <em>not</em></label>
+          <label for="setup-rounds">Setup rounds (cubes each player places first)</label>
+          <select id="setup-rounds">${SETUP_ROUND_CHOICES.map((n) => `
+            <option value="${n}" ${n === options.setupRounds ? 'selected' : ''}>${n}</option>`).join('')}</select>
+          <label class="check"><input type="checkbox" id="highlight" ${options.highlight ? 'checked' : ''}> Highlight spaces using each player's own clue</label>
+          <label class="check"><input type="checkbox" id="advanced" ${options.advanced ? 'checked' : ''}> Advanced: one clue says where the habitat is <em>not</em></label>
           <button class="primary" data-act="start" ${enough ? '' : 'disabled'}>
             ${enough ? 'Start the hunt' : `Need ${MIN_PLAYERS - roster.length} more to start`}
           </button>
           <p class="fine">Keep this tab open while you play. Your browser is running the game.</p>`
-        : `<p>Waiting for the host to start… (${esc(STATUS[status] ?? '')})</p>`}
+        : `<ul class="settings">
+             <li>Setup rounds: ${options.setupRounds}</li>
+             <li>Clue highlighting: ${options.highlight ? 'on' : 'off'}</li>
+             <li>Advanced clues: ${options.advanced ? 'on' : 'off'}</li>
+           </ul>
+           <p>Waiting for the host to start… (${esc(STATUS[status] ?? '')})</p>`}
       </div>
       <details class="card rules"><summary>How to play</summary>${rulesHtml()}</details>
     </main>`;
@@ -169,7 +178,7 @@ function renderBoard(game) {
   const cells = ordered.map((hex) => {
     const [x, y] = hexCenter(hex);
     const excluded = !clueMatches(game.map, game.myClue, hex);
-    const dim = (placing && !legalCube(game, hex)) || (showClue && !placing && excluded);
+    const dim = game.highlight && ((placing && !legalCube(game, hex)) || (showClue && !placing && excluded));
     const classes = ['hex', dim ? 'dim' : '', selected === hex.id ? 'selected' : '',
       game.lastHex === hex.id ? 'last' : '', game.reveal?.habitat === hex.id ? 'habitat' : ''].join(' ');
     const animal = hex.animal
@@ -224,7 +233,7 @@ function turnLine(game) {
   if (game.phase === 'over') return `${name(game.winner)} found the cryptid!`;
   if (needsCube(game)) {
     return game.phase === 'setup'
-      ? `Your turn: place a setup cube (${Math.ceil(game.setupLeft / game.names.length)} of 2 rounds left)`
+      ? `Your turn: place a setup cube (round ${game.setupRounds - Math.ceil(game.setupLeft / game.names.length) + 1} of ${game.setupRounds})`
       : 'Place a cube on a space your clue rules out';
   }
   if (game.phase === 'penalty') return `Waiting for ${name(game.pendingCube)} to place a cube`;
@@ -243,8 +252,9 @@ function renderActions(game) {
   const hex = selected === null ? null : game.map.hexes[selected];
   const heading = hex ? `<p class="picked">${esc(hexDescription(hex))}</p>` : '';
   if (needsCube(game)) {
-    if (!hex) return '<div class="card"><p>Tap a bright space on the map.</p></div>';
-    const legal = legalCube(game, hex);
+    if (!hex) return `<div class="card"><p>Tap a ${game.highlight ? 'bright ' : ''}space on the map.</p></div>`;
+    // With highlighting off, nothing hints at the clue until a move is actually tried.
+    const legal = !game.highlight || legalCube(game, hex);
     return `<div class="card">${heading}
       <button class="primary" data-act="cube" ${legal ? '' : 'disabled'}>Place cube here</button>
       ${legal ? '' : '<p class="fine">Your clue allows this space, or it already has a cube.</p>'}</div>`;
@@ -257,7 +267,7 @@ function renderActions(game) {
     return `<div class="card">${heading}<p class="fine">This space has a cube, so it can't be the habitat.</p></div>`;
   }
   const discs = game.discs[hex.id] ?? [];
-  const canSearch = clueMatches(game.map, game.myClue, hex);
+  const canSearch = !game.highlight || clueMatches(game.map, game.myClue, hex);
   return `<div class="card">${heading}
     <h3>Question</h3>
     <div class="ask">${game.names.map((name, i) => (i === game.me ? '' : `
@@ -290,7 +300,7 @@ function renderGame() {
       </section>
       <aside>
         <div class="card clue"><h2>Your secret clue</h2><p>${esc(clueText(game.myClue))}</p>
-          <label class="check"><input type="checkbox" id="show-clue" ${showClue ? 'checked' : ''}> Dim spaces my clue rules out</label>
+          ${game.highlight ? `<label class="check"><input type="checkbox" id="show-clue" ${showClue ? 'checked' : ''}> Dim spaces my clue rules out</label>` : ''}
         </div>
         <div class="actions">${renderActions(game)}</div>
         <div class="card"><h2>Hunters</h2><ul class="roster">${view.roster.map((p, i) => `
@@ -367,7 +377,7 @@ app.addEventListener('click', (event) => {
       break;
     }
     case 'start':
-      session.start(app.querySelector('#advanced').checked);
+      session.start();
       break;
     case 'lobby':
       session.backToLobby();
@@ -402,6 +412,10 @@ app.addEventListener('change', (event) => {
   if (event.target.id === 'show-clue') {
     showClue = event.target.checked;
     render();
+  } else if (event.target.id === 'setup-rounds') {
+    session.setOptions({ setupRounds: Number(event.target.value) });
+  } else if (event.target.id === 'highlight' || event.target.id === 'advanced') {
+    session.setOptions({ [event.target.id]: event.target.checked });
   }
 });
 

@@ -1,6 +1,6 @@
 // Host-authoritative rooms over WebRTC. The host's browser runs the rules and
 // sends each player a personal view, so clues never reach other players' devices.
-import { applyAction, createGame, MAX_PLAYERS, MIN_PLAYERS, RuleError, viewFor } from './rules.js';
+import { applyAction, createGame, DEFAULT_OPTIONS, MAX_PLAYERS, MIN_PLAYERS, RuleError, viewFor } from './rules.js';
 
 const PREFIX = 'cryptid-hunt-v1-';
 const CODE_LETTERS = 'ABCDEFGHJKMNPQRSTUVWXYZ';
@@ -56,6 +56,7 @@ export class HostSession {
     this.room = saved
       ? JSON.parse(saved)
       : { players: [{ name: cleanName(hostName), token: this.token }], game: null };
+    this.room.options = { ...DEFAULT_OPTIONS, ...this.room.options };
     this.publish();
     this.openPeer();
   }
@@ -140,11 +141,16 @@ export class HostSession {
     this.act(this.token, action);
   }
 
-  start(advanced) {
+  setOptions(changes) {
+    this.room.options = { ...this.room.options, ...changes };
+    this.publish();
+  }
+
+  start() {
     const { players } = this.room;
     if (players.length < MIN_PLAYERS) return;
     const seed = crypto.getRandomValues(new Uint32Array(1))[0];
-    this.room.game = createGame(players.map((p) => p.name), seed, advanced);
+    this.room.game = createGame(players.map((p) => p.name), seed, this.room.options);
     this.publish();
   }
 
@@ -159,7 +165,13 @@ export class HostSession {
       name: p.name,
       online: p.token === this.token || this.conns.has(p.token),
     }));
-    return { code: this.code, roster, isHost: seat === 0, game: game ? viewFor(game, seat) : null };
+    return {
+      code: this.code,
+      roster,
+      isHost: seat === 0,
+      options: this.room.options,
+      game: game ? viewFor(game, seat) : null,
+    };
   }
 
   publish() {
