@@ -146,7 +146,7 @@ export function clueText(clue) {
   }
 }
 
-function clueCatalog() {
+export function clueCatalog() {
   const clues = [{ kind: 'nearAnyAnimal' }];
   TERRAINS.forEach((a, i) => {
     clues.push({ kind: 'nearTerrain', terrain: a });
@@ -273,6 +273,7 @@ function advanceSetup(game) {
     if (game.setupLeft === 0) {
       game.phase = 'turn';
       game.current = 0;
+      game.lastHex = null; // this log line isn't about a space
       game.log.push('Setup complete. The hunt begins!');
       return;
     }
@@ -335,10 +336,10 @@ function search(game, player, hexId) {
     const other = (player + step) % count;
     if (clueMatches(game.map, game.clues[other], hex)) {
       addDisc(game, hex, other);
-      game.log.push(`${nameOf(game, other)} answered: maybe (disc).`);
+      game.log.push(`${nameOf(game, other)} answered about ${spaceName(hex)}: maybe (disc).`);
     } else {
       game.cubes[hex.id] = other;
-      game.log.push(`${nameOf(game, other)} answered: no (cube). The search fails.`);
+      game.log.push(`${nameOf(game, other)} answered about ${spaceName(hex)}: no (cube). The search fails.`);
       requirePenalty(game, player);
       return;
     }

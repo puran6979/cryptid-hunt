@@ -23,6 +23,8 @@ let selected = null;
 let showClue = false;
 let message = '';
 let homeError = '';
+let seenLastHex = null;
+let flashUntil = 0;
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const storedName = () => {
@@ -107,7 +109,8 @@ function rulesHtml() {
     <li><strong>Penalty.</strong> If you get a cube, you must place one of your own on a space your clue rules out, which gives information away.</li>
     <li><strong>Search.</strong> Or, pick a space your clue allows and search it. Each player answers in turn. The first cube ends the search and you take a penalty.</li>
     <li><strong>Win.</strong> If every player answers with a disc, you've found the habitat.</li>
-  </ol>`;
+  </ol>
+  <p><a href="book.html" target="_blank" rel="noopener">Open the Clue Book</a> to see every possible clue.</p>`;
 }
 
 function renderLobby() {
@@ -173,7 +176,13 @@ function renderBoard(game) {
   const height = H * ROWS + H / 2 + 8;
   const placing = needsCube(game);
   // SVG paints in order, so emphasised hexes go last to keep their outlines on top.
-  const emphasis = (hex) => [game.lastHex, selected, game.reveal?.habitat].indexOf(hex.id) + 1;
+  const emphasis = (hex) => [selected, game.lastHex, game.reveal?.habitat].indexOf(hex.id) + 1;
+  // Pulse only when the latest space changes, not on every redraw.
+  if (game.lastHex !== seenLastHex) {
+    seenLastHex = game.lastHex;
+    flashUntil = Date.now() + 2500;
+  }
+  const flashing = Date.now() < flashUntil;
   const ordered = [...game.map.hexes].sort((a, b) => emphasis(a) - emphasis(b));
   const cells = ordered.map((hex) => {
     const [x, y] = hexCenter(hex);
@@ -199,6 +208,7 @@ function renderBoard(game) {
       aria-label="${spaceName(hex)}, ${hex.terrain}${hex.structure ? `, ${hex.structure}` : ''}${hex.animal ? `, ${hex.animal} territory` : ''}">
       <polygon class="cell" fill="url(#t-${hex.terrain})" points="${hexPoints(x, y)}"/>
       ${animal}${structure}
+      ${game.lastHex === hex.id ? `<polygon class="last-ring ${flashing ? 'flash' : ''}" points="${hexPoints(x, y, 0.93)}"/>` : ''}
       <text class="coord" x="${x}" y="${y + 26}">${spaceName(hex)}</text>
       ${game.reveal?.habitat === hex.id ? `<text class="glyph big" x="${x + 2}" y="${y + 3}">🐾</text>` : ''}
       ${discs}${cubeEl}
@@ -294,6 +304,7 @@ function renderGame() {
     </header>
     <div class="banner ${mine ? 'mine' : ''} ${game.phase === 'over' ? 'won' : ''}" aria-live="polite">${turnLine(game)}</div>
     ${message ? `<p class="error" role="alert">${esc(message)}</p>` : ''}
+    <p class="latest"><strong>Latest</strong> ${esc(game.log[game.log.length - 1])}</p>
     <div class="layout">
       <section class="map-wrap"><div class="map-scroll">${renderBoard(game)}</div>
         <p class="legend">🗿 standing stone · 🏚️ shack · 🐻 bear · 🐆 cougar · ■ cube = no · ● disc = maybe</p>
@@ -306,7 +317,7 @@ function renderGame() {
         <div class="card"><h2>Hunters</h2><ul class="roster">${view.roster.map((p, i) => `
           <li class="${i === active && game.phase !== 'over' ? 'active' : ''}"><span class="swatch p${i}">${i + 1}</span>
           ${esc(p.name)}${i === game.me ? ' <em>you</em>' : ''}${p.online ? '' : ' <em class="warn">away</em>'}</li>`).join('')}</ul></div>
-        <div class="card"><h2>Log</h2><ol class="log">${game.log.map((l) => `<li>${esc(l)}</li>`).join('')}</ol></div>
+        <div class="card"><h2>Log</h2><ol class="log">${game.log.map((l, i) => `<li class="${i === game.log.length - 1 ? 'newest' : ''}">${esc(l)}</li>`).join('')}</ol></div>
       </aside>
     </div>`;
   app.querySelector('.map-scroll').scrollLeft = mapScroll;

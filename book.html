@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Every clue that can appear in Cryptid Hunt.">
+  <title>Clue Book - Cryptid Hunt</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐾</text></svg>">
+  <link rel="stylesheet" href="src/style.css">
+</head>
+<body>
+  <main class="book">
+    <p class="eyebrow">Cryptid Hunt</p>
+    <h1>The Clue Book</h1>
+    <p class="lede">Every clue a hunter can be dealt, <span id="total"></span> in all. Each player holds one, and
+    together the clues in a game point to exactly one space.</p>
+    <div class="card">
+      <h2 style="margin-top:0">Reading the clues</h2>
+      <ul>
+        <li><strong>"Within" includes the space itself.</strong> A forest space is within 1 space of forest.</li>
+        <li><strong>Any matching feature counts.</strong> One nearby standing stone is enough, even if others are far away.</li>
+        <li><strong>"Not" clues</strong> only appear in Advanced games, and each of those games has exactly one.</li>
+        <li><strong>Not every clue appears on every map.</strong> Clues that would fit too few or too many spaces on that map are left out, and no two players in a game share a clue.</li>
+      </ul>
+    </div>
+    <div id="chapters"></div>
+    <p class="no-print"><button id="print">Print this book</button></p>
+    <p class="fine">Unofficial fan project, not affiliated with or endorsed by the publishers of Cryptid.</p>
+  </main>
+  <script type="module" src="src/book.js"></script>
+</body>
+</html>

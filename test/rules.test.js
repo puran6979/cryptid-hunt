@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  applyAction, canPlaceCube, clueMatches, createGame, generatePuzzle, hexDistance, RuleError, viewFor,
+  applyAction, canPlaceCube, clueCatalog, clueMatches, clueText, createGame, generatePuzzle, hexDistance, RuleError, viewFor,
 } from '../src/rules.js';
 
 const NAMES = ['Ann', 'Bo', 'Cy', 'Di'];
@@ -40,6 +40,12 @@ for (const advanced of [false, true]) {
   }
 }
 
+test('the clue catalog has 20 distinct clues', () => {
+  const texts = clueCatalog().map(clueText);
+  assert.equal(texts.length, 20);
+  assert.equal(new Set(texts).size, 20);
+});
+
 test('setup rejects cubes that contradict your clue or come out of turn', () => {
   const game = createGame(NAMES, 11);
   const allowed = game.map.hexes.find((h) => clueMatches(game.map, game.clues[0], h));
@@ -50,6 +56,7 @@ test('setup rejects cubes that contradict your clue or come out of turn', () => 
   assert.equal(game.phase, 'turn');
   assert.equal(game.current, 0);
   assert.equal(Object.keys(game.cubes).length, 8);
+  assert.equal(game.lastHex, null);
 });
 
 for (const setupRounds of [0, 1, 2, 3, 4]) {
@@ -132,6 +139,8 @@ test('search stops at the first player who rules the space out', () => {
   assert.equal(game.winner, null);
   assert.equal(game.phase, 'penalty');
   assert.notEqual(game.cubes[hex.id], undefined);
+  assert.equal(game.lastHex, hex.id);
+  assert.ok(game.log.at(-1).includes(`${String.fromCharCode(65 + hex.c)}${hex.r + 1}`));
   assert.ok(game.discs[hex.id].includes(0));
 });
 
