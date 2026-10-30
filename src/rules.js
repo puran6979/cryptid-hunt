@@ -4,7 +4,7 @@ export const ROWS = 9;
 export const TERRAINS = ['forest', 'desert', 'swamp', 'mountain', 'water'];
 export const MIN_PLAYERS = 3;
 export const MAX_PLAYERS = 5;
-export const SETUP_ROUND_CHOICES = [1, 2, 3, 4];
+export const SETUP_ROUND_CHOICES = [0, 1, 2, 3, 4];
 export const DEFAULT_OPTIONS = { advanced: false, setupRounds: 2, highlight: true };
 
 const STRUCTURE_LABEL = { stone: 'a standing stone', shack: 'an abandoned shack' };
@@ -214,12 +214,14 @@ export function createGame(names, seed, options = {}) {
     cubes: {},
     discs: {},
     current: 0,
-    phase: 'setup',
+    phase: setupRounds === 0 ? 'turn' : 'setup',
     setupLeft: names.length * setupRounds,
     pendingCube: null,
     winner: null,
     lastHex: null,
-    log: [`Setup: each player places ${setupRounds} cube${setupRounds === 1 ? '' : 's'} on spaces their clue rules out.`],
+    log: [setupRounds === 0
+      ? 'No setup rounds. The hunt begins!'
+      : `Setup: each player places ${setupRounds} cube${setupRounds === 1 ? '' : 's'} on spaces their clue rules out.`],
   };
 }
 

@@ -52,7 +52,7 @@ test('setup rejects cubes that contradict your clue or come out of turn', () => 
   assert.equal(Object.keys(game.cubes).length, 8);
 });
 
-for (const setupRounds of [1, 2, 3, 4]) {
+for (const setupRounds of [0, 1, 2, 3, 4]) {
   test(`setup places ${setupRounds} round(s) of cubes, then the first player starts`, () => {
     const game = createGame(NAMES, 21, { setupRounds });
     finishSetup(game);
