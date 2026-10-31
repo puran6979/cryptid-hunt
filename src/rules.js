@@ -6,7 +6,8 @@ export const MIN_PLAYERS = 3;
 export const MAX_PLAYERS = 5;
 export const SETUP_ROUND_CHOICES = [0, 1, 2, 3, 4];
 export const STRUCTURE_COLORS = ['red', 'violet', 'white', 'black'];
-export const DEFAULT_OPTIONS = { advanced: false, setupRounds: 2, highlight: true };
+export const TIMER_CHOICES = [15, 30, 45, 60, 90, 120, 180, 300];
+export const DEFAULT_OPTIONS = { advanced: false, setupRounds: 2, highlight: true, timer: false, timerSeconds: 60 };
 
 const STRUCTURE_LABEL = { stone: 'a standing stone', shack: 'an abandoned shack' };
 const ANIMAL_LABEL = { bear: 'bear territory', cougar: 'cougar territory' };
@@ -207,7 +208,8 @@ export function generatePuzzle(seed, playerCount, advanced = false) {
 }
 
 export function createGame(names, seed, options = {}) {
-  const { advanced, setupRounds, highlight } = { ...DEFAULT_OPTIONS, ...options };
+  const { advanced, setupRounds, highlight, timer, timerSeconds } = { ...DEFAULT_OPTIONS, ...options };
+  if (timer && !TIMER_CHOICES.includes(timerSeconds)) throw new RuleError('Invalid turn time.');
   if (!SETUP_ROUND_CHOICES.includes(setupRounds)) throw new RuleError('Invalid number of setup rounds.');
   if (names.length < MIN_PLAYERS || names.length > MAX_PLAYERS) {
     throw new RuleError(`Cryptid Hunt needs ${MIN_PLAYERS}-${MAX_PLAYERS} players.`);
@@ -218,6 +220,7 @@ export function createGame(names, seed, options = {}) {
     advanced,
     highlight,
     setupRounds,
+    timerSeconds: timer ? timerSeconds : null,
     map,
     habitat,
     clues,
@@ -362,6 +365,23 @@ function search(game, player, hexId) {
   game.log.push(`${nameOf(game, player)} found the cryptid on ${spaceName(hex)}!`);
 }
 
+// Time ran out: place a random legal cube for the waiting player, then move on.
+export function timeoutTurn(game, rng) {
+  if (game.phase === 'over') return;
+  const player = game.phase === 'penalty' ? game.pendingCube : game.current;
+  const legal = game.map.hexes.filter((h) => canPlaceCube(game, player, h));
+  if (legal.length > 0) {
+    const hex = legal[Math.floor(rng() * legal.length)];
+    game.cubes[hex.id] = player;
+    game.lastHex = hex.id;
+    game.log.push(`${nameOf(game, player)} ran out of time: a random cube went on ${spaceName(hex)}.`);
+  } else {
+    game.log.push(`${nameOf(game, player)} ran out of time.`);
+  }
+  if (game.phase === 'setup') advanceSetup(game);
+  else nextTurn(game);
+}
+
 export function applyAction(game, player, action) {
   if (game.phase === 'over') throw new RuleError('The game is over.');
   switch (action?.type) {
@@ -384,6 +404,7 @@ export function viewFor(game, player) {
     advanced: game.advanced,
     highlight: game.highlight !== false,
     setupRounds: game.setupRounds ?? 2,
+    timerSeconds: game.timerSeconds ?? null,
     map: game.map,
     cubes: game.cubes,
     discs: game.discs,

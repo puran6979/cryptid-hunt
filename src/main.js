@@ -1,4 +1,4 @@
-import { clueMatches, clueText, COLS, MIN_PLAYERS, ROWS, SETUP_ROUND_CHOICES, spaceName } from './rules.js';
+import { clueMatches, clueText, COLS, MIN_PLAYERS, ROWS, SETUP_ROUND_CHOICES, spaceName, TIMER_CHOICES } from './rules.js';
 import { GuestSession, hasSavedRoom, HostSession, newRoomCode } from './net.js';
 
 const app = document.getElementById('app');
@@ -29,6 +29,7 @@ let showClue = false;
 let message = '';
 let homeError = '';
 let clueHidden = loadClueHidden();
+let turnDeadline = null;
 let seenLastHex = null;
 let flashUntil = 0;
 
@@ -50,6 +51,20 @@ function saveClueHidden(hidden) {
 
 // Hints reveal the clue to anyone watching the screen, so hiding it turns them off too.
 const hintsOn = (game) => game.highlight && !clueHidden;
+
+function timeLabel(seconds) {
+  if (seconds < 60) return `${seconds} seconds`;
+  return seconds % 60 ? `${seconds / 60} minutes` : `${seconds / 60} minute${seconds === 60 ? '' : 's'}`;
+}
+
+function clockText() {
+  const left = Math.max(0, Math.ceil((turnDeadline - Date.now()) / 1000));
+  return `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
+}
+
+function clockUrgent() {
+  return turnDeadline - Date.now() <= 10000;
+}
 
 function structureMark(type, color, x, y) {
   return `<g class="structure ${color}" transform="translate(${x} ${y})"><path d="${STRUCTURE_PATHS[type]}"/></g>`;
@@ -75,6 +90,8 @@ const roomFromHash = () => location.hash.slice(1).toUpperCase().replace(/[^A-Z]/
 const listener = {
   state(next) {
     view = next;
+    // Remaining time rather than a timestamp, because device clocks can disagree.
+    turnDeadline = next.game?.timeLeftMs == null ? null : Date.now() + next.game.timeLeftMs;
     render();
   },
   status(next) {
@@ -137,6 +154,7 @@ function rulesHtml() {
       and truthfully: a disc means their clue allows it, a cube means it doesn't.</li>
     <li><strong>Penalty.</strong> If you get a cube, you must place one of your own on a space your clue rules out, which gives information away.</li>
     <li><strong>Search.</strong> Or, pick a space your clue allows and search it. Each player answers in turn. The first cube ends the search and you take a penalty.</li>
+    <li><strong>Timer.</strong> If the host turns it on and your time runs out, a random cube of yours is placed on a space your clue rules out, and play moves on.</li>
     <li><strong>Win.</strong> If every player answers with a disc, you've found the habitat.</li>
   </ol>
   <p><a href="book.html" target="_blank" rel="noopener">Open the Clue Book</a> to see every possible clue.</p>`;
@@ -167,6 +185,10 @@ function renderLobby() {
           <select id="setup-rounds">${SETUP_ROUND_CHOICES.map((n) => `
             <option value="${n}" ${n === options.setupRounds ? 'selected' : ''}>${n}</option>`).join('')}</select>
           <label class="check"><input type="checkbox" id="highlight" ${options.highlight ? 'checked' : ''}> Highlight spaces using each player's own clue</label>
+          <label class="check"><input type="checkbox" id="timer" ${options.timer ? 'checked' : ''}> Turn timer: run out of time and a random cube of yours is placed</label>
+          ${options.timer ? `<label for="timer-seconds">Time per turn</label>
+          <select id="timer-seconds">${TIMER_CHOICES.map((n) => `
+            <option value="${n}" ${n === options.timerSeconds ? 'selected' : ''}>${timeLabel(n)}</option>`).join('')}</select>` : ''}
           <label class="check"><input type="checkbox" id="advanced" ${options.advanced ? 'checked' : ''}> Advanced: one clue says where the habitat is <em>not</em></label>
           <button class="primary" data-act="start" ${enough ? '' : 'disabled'}>
             ${enough ? 'Start the hunt' : `Need ${MIN_PLAYERS - roster.length} more to start`}
@@ -175,6 +197,7 @@ function renderLobby() {
         : `<ul class="settings">
              <li>Setup rounds: ${options.setupRounds}</li>
              <li>Clue highlighting: ${options.highlight ? 'on' : 'off'}</li>
+             <li>Turn timer: ${options.timer ? timeLabel(options.timerSeconds) : 'off'}</li>
              <li>Advanced clues: ${options.advanced ? 'on' : 'off'}</li>
            </ul>
            <p>Waiting for the host to start… (${esc(STATUS[status] ?? '')})</p>`}
@@ -335,7 +358,10 @@ function renderGame() {
       ${status === 'online' ? '' : `<span class="warn" role="status">${esc(STATUS[status] ?? '')}</span>`}
       <a class="book-link" href="book.html" target="_blank" rel="noopener">Clue Book</a>
     </header>
-    <div class="banner ${mine ? 'mine' : ''} ${game.phase === 'over' ? 'won' : ''}" aria-live="polite">${turnLine(game)}</div>
+    <div class="banner ${mine ? 'mine' : ''} ${game.phase === 'over' ? 'won' : ''}">
+      <span aria-live="polite">${turnLine(game)}</span>
+      ${turnDeadline === null ? '' : `<span class="clock ${clockUrgent() ? 'urgent' : ''}" role="timer">${clockText()}</span>`}
+    </div>
     ${message ? `<p class="error" role="alert">${esc(message)}</p>` : ''}
     <p class="latest"><strong>Latest</strong> ${esc(game.log[game.log.length - 1])}</p>
     <div class="layout">
@@ -472,10 +498,19 @@ app.addEventListener('change', (event) => {
     render();
   } else if (event.target.id === 'setup-rounds') {
     session.setOptions({ setupRounds: Number(event.target.value) });
-  } else if (event.target.id === 'highlight' || event.target.id === 'advanced') {
+  } else if (event.target.id === 'timer-seconds') {
+    session.setOptions({ timerSeconds: Number(event.target.value) });
+  } else if (event.target.id === 'timer' || event.target.id === 'highlight' || event.target.id === 'advanced') {
     session.setOptions({ [event.target.id]: event.target.checked });
   }
 });
+
+setInterval(() => {
+  const clock = app.querySelector('.clock');
+  if (!clock || turnDeadline === null) return;
+  clock.textContent = clockText();
+  clock.classList.toggle('urgent', clockUrgent());
+}, 250);
 
 // A returning host or guest rejoins their room from the link without retyping anything.
 const initial = roomFromHash();

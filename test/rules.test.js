@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  applyAction, canPlaceCube, clueCatalog, clueMatches, clueText, createGame, generatePuzzle, hexDistance, RuleError, viewFor,
+  applyAction, canPlaceCube, clueCatalog, clueMatches, clueText, createGame, timeoutTurn, generatePuzzle, hexDistance, RuleError, viewFor,
 } from '../src/rules.js';
 
 const NAMES = ['Ann', 'Bo', 'Cy', 'Di'];
@@ -80,6 +80,60 @@ test('structures get a colour, with no repeats within a type', () => {
       assert.ok(colors.every(Boolean));
     }
   }
+});
+
+test('timing out on a turn places a legal cube and passes play', () => {
+  const game = createGame(NAMES, 31);
+  finishSetup(game);
+  const before = Object.keys(game.cubes).length;
+  timeoutTurn(game, () => 0.5);
+  assert.equal(Object.keys(game.cubes).length, before + 1);
+  const placed = game.map.hexes[game.lastHex];
+  assert.equal(game.cubes[placed.id], 0);
+  assert.equal(clueMatches(game.map, game.clues[0], placed), false);
+  assert.equal(game.current, 1);
+  assert.equal(game.phase, 'turn');
+});
+
+test('timing out on a penalty places that cube and passes play', () => {
+  const game = createGame(NAMES, 32);
+  finishSetup(game);
+  const hex = game.map.hexes.find((h) => canPlaceCube(game, 1, h));
+  applyAction(game, 0, { type: 'question', hex: hex.id, target: 1 });
+  const before = Object.keys(game.cubes).length;
+  timeoutTurn(game, () => 0);
+  assert.equal(Object.keys(game.cubes).length, before + 1);
+  assert.equal(game.cubes[game.lastHex], 0);
+  assert.equal(game.current, 1);
+  assert.equal(game.phase, 'turn');
+  assert.equal(game.pendingCube, null);
+});
+
+test('timing out in setup uses up that placement', () => {
+  const game = createGame(NAMES, 33);
+  const left = game.setupLeft;
+  timeoutTurn(game, () => 0.99);
+  assert.equal(game.setupLeft, left - 1);
+  assert.equal(game.current, 1);
+  assert.equal(game.cubes[game.lastHex], 0);
+});
+
+test('timing out with no legal space just passes play', () => {
+  const game = createGame(NAMES, 34);
+  finishSetup(game);
+  for (const hex of game.map.hexes) {
+    if (!clueMatches(game.map, game.clues[0], hex)) game.cubes[hex.id] = 1;
+  }
+  const before = Object.keys(game.cubes).length;
+  timeoutTurn(game, () => 0);
+  assert.equal(Object.keys(game.cubes).length, before);
+  assert.equal(game.current, 1);
+});
+
+test('invalid turn times are rejected, and the timer is off by default', () => {
+  assert.throws(() => createGame(NAMES, 35, { timer: true, timerSeconds: 7 }), RuleError);
+  assert.equal(createGame(NAMES, 35).timerSeconds, null);
+  assert.equal(viewFor(createGame(NAMES, 35, { timer: true, timerSeconds: 30 }), 0).timerSeconds, 30);
 });
 
 test('setup rejects cubes that contradict your clue or come out of turn', () => {

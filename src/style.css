@@ -46,7 +46,9 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .top { display: flex; gap: 14px; align-items: baseline; padding: 10px 16px; }
 .top strong { font: 700 1.2rem Georgia, serif; }
 .top .code { color: var(--muted); font-size: .85rem; }
-.banner { padding: 9px 16px; background: var(--card); border-block: 1px solid var(--line); }
+.banner { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 9px 16px; background: var(--card); border-block: 1px solid var(--line); }
+.clock { font: 700 1.1rem ui-monospace, Menlo, monospace; white-space: nowrap; }
+.clock.urgent { padding: 0 8px; border-radius: 6px; background: #c81e1e; color: #fff; }
 .banner.mine { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
 .banner.won { background: #2f6b45; color: #fff; font-weight: 600; }
 .banner + .error { padding: 0 16px; }

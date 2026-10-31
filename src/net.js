@@ -1,6 +1,6 @@
 // Host-authoritative rooms over WebRTC. The host's browser runs the rules and
 // sends each player a personal view, so clues never reach other players' devices.
-import { applyAction, createGame, DEFAULT_OPTIONS, makeRng, MAX_PLAYERS, MIN_PLAYERS, RuleError, shuffle, viewFor } from './rules.js';
+import { applyAction, createGame, DEFAULT_OPTIONS, makeRng, MAX_PLAYERS, MIN_PLAYERS, RuleError, shuffle, timeoutTurn, viewFor } from './rules.js';
 
 const PREFIX = 'cryptid-hunt-v1-';
 const CODE_LETTERS = 'ABCDEFGHJKMNPQRSTUVWXYZ';
@@ -57,6 +57,8 @@ export class HostSession {
       ? JSON.parse(saved)
       : { players: [{ name: cleanName(hostName), token: this.token }], game: null };
     this.room.options = { ...DEFAULT_OPTIONS, ...this.room.options };
+    // A resumed game restarts the clock, so nobody is punished for the host's reload.
+    this.armTimer();
     this.publish();
     this.openPeer();
   }
@@ -124,11 +126,26 @@ export class HostSession {
     if (seat < 0 || !this.room.game) return;
     try {
       applyAction(this.room.game, seat, action);
+      this.armTimer();
       this.publish();
     } catch (err) {
       if (!(err instanceof RuleError)) throw err;
       this.notify(token, err.message);
     }
+  }
+
+  armTimer() {
+    clearTimeout(this.timer);
+    this.deadline = null;
+    const game = this.room.game;
+    if (!game?.timerSeconds || game.phase === 'over') return;
+    const ms = game.timerSeconds * 1000;
+    this.deadline = Date.now() + ms;
+    this.timer = setTimeout(() => {
+      timeoutTurn(game, Math.random);
+      this.armTimer();
+      this.publish();
+    }, ms);
   }
 
   notify(token, message) {
@@ -152,11 +169,13 @@ export class HostSession {
     // Seats are the turn order, so shuffling them means joining first gives no advantage.
     this.room.players = shuffle(this.room.players, makeRng(orderSeed));
     this.room.game = createGame(this.room.players.map((p) => p.name), seed, this.room.options);
+    this.armTimer();
     this.publish();
   }
 
   backToLobby() {
     this.room.game = null;
+    this.armTimer();
     this.publish();
   }
 
@@ -171,7 +190,9 @@ export class HostSession {
       roster,
       isHost: players[seat].token === this.token,
       options: this.room.options,
-      game: game ? viewFor(game, seat) : null,
+      game: game
+        ? { ...viewFor(game, seat), timeLeftMs: this.deadline ? Math.max(0, this.deadline - Date.now()) : null }
+        : null,
     };
   }
 
